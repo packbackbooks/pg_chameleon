@@ -112,13 +112,8 @@ class mysql_source(object):
         db_conn["connect_timeout"] = int(db_conn["connect_timeout"])
 
         self.conn_buffered=pymysql.connect(
-            host = db_conn["host"],
-            user = db_conn["user"],
-            port = db_conn["port"],
-            password = db_conn["password"],
-            charset = db_conn["charset"],
-            connect_timeout = db_conn["connect_timeout"],
-            cursorclass=pymysql.cursors.DictCursor
+            cursorclass=pymysql.cursors.DictCursor,
+            **db_conn
         )
         self.charset = db_conn["charset"]
         self.cursor_buffered = self.conn_buffered.cursor()
@@ -144,13 +139,8 @@ class mysql_source(object):
         db_conn["port"] = int(db_conn["port"])
         db_conn["connect_timeout"] = int(db_conn["connect_timeout"])
         self.conn_unbuffered=pymysql.connect(
-            host = db_conn["host"],
-            user = db_conn["user"],
-            port = db_conn["port"],
-            password = db_conn["password"],
-            charset = db_conn["charset"],
-            connect_timeout = db_conn["connect_timeout"],
-            cursorclass=pymysql.cursors.SSCursor
+            cursorclass=pymysql.cursors.SSCursor,
+            **db_conn
         )
         self.charset = db_conn["charset"]
         self.cursor_unbuffered = self.conn_unbuffered.cursor()

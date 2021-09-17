@@ -508,7 +508,7 @@ class mysql_source(object):
 
         """
         self.logger.debug("locking the table `%s`.`%s`" % (schema, table) )
-        sql_lock = "FLUSH TABLES `%s`.`%s` WITH READ LOCK;" %(schema, table)
+        sql_lock = "FLUSH TABLES `%s`.`%s`;" %(schema, table)
         self.logger.debug("collecting the master's coordinates for table `%s`.`%s`" % (schema, table) )
         self.cursor_buffered.execute(sql_lock)
 

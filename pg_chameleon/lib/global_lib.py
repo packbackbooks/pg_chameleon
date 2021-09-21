@@ -888,7 +888,10 @@ class replica_engine(object):
             fh=logging.StreamHandler(sys.stdout)
 
         elif log_dest=='file':
-            fh = TimedRotatingFileHandler(log_file, when="d",interval=1,backupCount=log_days_keep)
+            if log_days_keep==-1:
+                fh = logging.FileHandler(log_file)
+            else:
+                fh = TimedRotatingFileHandler(log_file, when="d",interval=1,backupCount=log_days_keep)
 
         if log_level=='debug' or debug_mode:
             fh.setLevel(logging.DEBUG)

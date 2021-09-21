@@ -581,21 +581,21 @@ $BODY$
                 ELSE
                 
                     RAISE NOTICE 'Statement %', v_r_statements.t_sql;
-                    UPDATE sch_chameleon.t_replica_tables 
-                        SET 
-                            b_replica_enabled=FALSE
-                    WHERE
-                            v_schema_name=v_r_statements.v_schema_name
-                        AND	v_table_name=v_r_statements.v_table_name
-                    ;
+                    -- UPDATE sch_chameleon.t_replica_tables 
+                    --     SET 
+                    --         b_replica_enabled=FALSE
+                    -- WHERE
+                    --         v_schema_name=v_r_statements.v_schema_name
+                    --     AND	v_table_name=v_r_statements.v_table_name
+                    -- ;
 
-                    RAISE NOTICE 'Deleting the log entries for the table %.% ',v_r_statements.v_schema_name,v_r_statements.v_table_name;
-                    DELETE FROM sch_chameleon.t_log_replica  log
-                    WHERE
-                            v_table_name=v_r_statements.v_table_name
-                        AND	v_schema_name=v_r_statements.v_schema_name
-                        AND 	i_id_batch=v_i_id_batch
-                    ;
+                    -- RAISE NOTICE 'Deleting the log entries for the table %.% ',v_r_statements.v_schema_name,v_r_statements.v_table_name;
+                    -- DELETE FROM sch_chameleon.t_log_replica  log
+                    -- WHERE
+                    --         v_table_name=v_r_statements.v_table_name
+                    --     AND	v_schema_name=v_r_statements.v_schema_name
+                    --     AND 	i_id_batch=v_i_id_batch
+                    -- ;
                 END IF;
             END;
         END LOOP;

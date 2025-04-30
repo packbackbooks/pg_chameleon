@@ -13,8 +13,18 @@ from distutils.sysconfig import get_python_lib
 import multiprocessing as mp
 
 class pg_encoder(json.JSONEncoder):
-    def default(self, obj):
-        # Check if we have a dictionary with bytes as keys
+    def encode(self, obj):
+        # Pre-process the object before standard encoding
+        obj = self._process_object(obj)
+        return super().encode(obj)
+
+    def iterencode(self, obj, _one_shot=False):
+        # Pre-process the object before standard encoding
+        obj = self._process_object(obj)
+        return super().iterencode(obj, _one_shot)
+
+    def _process_object(self, obj):
+        # Handle dictionaries with bytes keys
         if isinstance(obj, dict):
             # Create a new dictionary with string keys
             new_dict = {}
@@ -22,22 +32,29 @@ class pg_encoder(json.JSONEncoder):
                 # Convert bytes keys to strings
                 if isinstance(k, bytes):
                     k = k.decode('utf-8', errors='replace')
-                new_dict[k] = v
+                # Recursively process nested values
+                new_dict[k] = self._process_object(v)
             return new_dict
-
-        # Handle other types as before
-        if (isinstance(obj, datetime.time) or
-            isinstance(obj, datetime.datetime) or
-            isinstance(obj, datetime.date) or
-            isinstance(obj, decimal.Decimal) or
-            isinstance(obj, datetime.timedelta) or
-            isinstance(obj, set) or
-            isinstance(obj, frozenset) or
-            isinstance(obj, bytes)):
-
+        # Handle lists and other iterables
+        elif isinstance(obj, list):
+            return [self._process_object(item) for item in obj]
+        # Handle other types
+        elif (isinstance(obj, datetime.time) or
+              isinstance(obj, datetime.datetime) or
+              isinstance(obj, datetime.date) or
+              isinstance(obj, decimal.Decimal) or
+              isinstance(obj, datetime.timedelta) or
+              isinstance(obj, set) or
+              isinstance(obj, frozenset) or
+              isinstance(obj, bytes)):
             return str(obj)
+        return obj
 
-        return json.JSONEncoder.default(self, obj)
+    def default(self, obj):
+        # This is called for objects that the encoder doesn't know how to handle
+        # after the encode/iterencode methods have been called
+        return str(obj)
+
 
 class pgsql_source(object):
     def __init__(self):

@@ -14,16 +14,29 @@ import multiprocessing as mp
 
 class pg_encoder(json.JSONEncoder):
     def default(self, obj):
-        if 	isinstance(obj, datetime.time) or \
-            isinstance(obj, datetime.datetime) or  \
-            isinstance(obj, datetime.date) or \
-            isinstance(obj, decimal.Decimal) or \
-            isinstance(obj, datetime.timedelta) or \
-            isinstance(obj, set) or\
-            isinstance(obj, frozenset) or\
-            isinstance(obj, bytes):
+        # Check if we have a dictionary with bytes as keys
+        if isinstance(obj, dict):
+            # Create a new dictionary with string keys
+            new_dict = {}
+            for k, v in obj.items():
+                # Convert bytes keys to strings
+                if isinstance(k, bytes):
+                    k = k.decode('utf-8', errors='replace')
+                new_dict[k] = v
+            return new_dict
+
+        # Handle other types as before
+        if (isinstance(obj, datetime.time) or
+            isinstance(obj, datetime.datetime) or
+            isinstance(obj, datetime.date) or
+            isinstance(obj, decimal.Decimal) or
+            isinstance(obj, datetime.timedelta) or
+            isinstance(obj, set) or
+            isinstance(obj, frozenset) or
+            isinstance(obj, bytes)):
 
             return str(obj)
+
         return json.JSONEncoder.default(self, obj)
 
 class pgsql_source(object):

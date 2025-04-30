@@ -14,7 +14,7 @@ from logging.handlers  import TimedRotatingFileHandler
 from daemonize import Daemonize
 import multiprocessing as mp
 import traceback
-
+from pkg_resources import get_distribution
 class rollbar_notifier(object):
     """
         This class is used to send messages to rollbar whether the key and environment variables are set
@@ -73,7 +73,7 @@ class replica_engine(object):
             sys.exit(10)
 
 
-        self.catalog_version = '2.0.7'
+        self.catalog_version = '2.0.10'
         self.upgradable_version = '1.7'
         self.lst_yes= ['yes',  'Yes', 'y', 'Y']
         python_lib=os.path.dirname(os.path.realpath(__file__))
@@ -120,6 +120,9 @@ class replica_engine(object):
         self.pg_engine.type_override = self.config["type_override"]
         self.pg_engine.sources = self.config["sources"]
         self.pg_engine.notifier = self.notifier
+        self.pg_engine.fillfactor = self.config["fillfactor"]
+
+
 
         #mysql_source instance initialisation
         self.mysql_source = mysql_source()
@@ -131,9 +134,11 @@ class replica_engine(object):
         self.mysql_source.sources = self.config["sources"]
         self.mysql_source.type_override = self.config["type_override"]
         self.mysql_source.notifier = self.notifier
-
-
-        #pgsql_source instance initialisation
+        try:
+            self.mysql_source.net_read_timeout = int(self.mysql_source.sources[self.mysql_source.source].get('net_read_timeout', '600'))
+        except:
+            self.mysql_source.net_read_timeout = 600
+            #pgsql_source instance initialisation
         self.pgsql_source = pgsql_source()
         self.pgsql_source.source = self.args.source
         self.pgsql_source.tables = self.args.tables
@@ -159,13 +164,25 @@ class replica_engine(object):
 
         if self.args.source != '*' and self.args.command != 'add_source':
             self.pg_engine.connect_db()
-            source_count = self.pg_engine.check_source()
-            self.pg_engine.disconnect_db()
+            try:
+                source_count = self.pg_engine.check_source()
+            except Exception as e:
+                if type(e).__name__ == "UndefinedTable" and self.count_replica_schema() ==  0:
+                    print("ERROR - Could not find the replica schema. Did you run the command create_replica_schema?")
+                self.pg_engine.disconnect_db()
+                sys.exit()
             if source_count == 0:
-                print("FATAL, The source %s is not registered. Please add it add_source" % (self.args.source))
+                print("FATAL, The source %s is not registered. Please add it with the command add_source" % (self.args.source))
+                self.pg_engine.disconnect_db()
                 sys.exit()
 
 
+    def count_replica_schema(self):
+        """
+           Returns the count of the replica schema from the destination database
+        """
+        self.pg_engine.connect_db()
+        return self.pg_engine.check_replica_schema()[0]
 
 
     def terminate_replica(self, signal, frame):
@@ -216,8 +233,19 @@ class replica_engine(object):
             sys.exit()
 
         config_file = open(self.config_file, 'r')
-        self.config = yaml.load(config_file.read(), Loader=yaml.FullLoader)
+        pyyml=str(get_distribution('PyYAML')).split(' ')[1]
+        if pyyml<='3.13':
+            self.config = yaml.load(config_file.read())
+        else:
+            self.config = yaml.load(config_file.read(), Loader=yaml.FullLoader)
         config_file.close()
+
+        #managing default values for optional keys
+        if "fillfactor" not in self.config:
+            self.config["fillfactor"] = None
+
+        if "type_override" not in self.config:
+            self.config["type_override"] = None
 
 
 
@@ -310,6 +338,17 @@ class replica_engine(object):
         self.pg_engine.set_source_status("stopped")
         self.pg_engine.end_maintenance()
 
+    def copy_schema(self):
+        """
+            The method calls init_replica adding a flag for skipping the data copy.
+            Useful if we want to test for schema issues or to populate the schema preventively.
+
+        """
+        self.mysql_source.copy_table_data=False
+        self.init_replica()
+        self.pg_engine.fk_metadata = self.mysql_source.get_foreign_keys_metadata()
+        self.pg_engine.create_foreign_keys()
+
     def init_replica(self):
         """
             The method  initialise a replica for a given source and configuration.
@@ -345,7 +384,7 @@ class replica_engine(object):
                 foreground = True
             else:
                 foreground = False
-                print("Init replica process for source %s started." % (self.args.source))
+                print("Process for source %s started." % (self.args.source))
             keep_fds = [self.logger_fds]
             init_pid = os.path.expanduser('%s/%s.pid' % (self.config["pid_dir"],self.args.source))
             self.logger.info("Initialising the replica for source %s" % self.args.source)
@@ -365,7 +404,7 @@ class replica_engine(object):
                 foreground = True
             else:
                 foreground = False
-                print("Init replica process for source %s started." % (self.args.source))
+                print("Process for source %s started." % (self.args.source))
             keep_fds = [self.logger_fds]
             init_pid = os.path.expanduser('%s/%s.pid' % (self.config["pid_dir"],self.args.source))
             self.logger.info("Initialising the replica for source %s" % self.args.source)
@@ -563,7 +602,10 @@ class replica_engine(object):
                 self.logger.debug("Replica process for source %s is running" % (self.args.source))
                 self.pg_engine.cleanup_replayed_batches()
             else:
-                stack_trace = queue.get()
+                try:
+                    stack_trace = queue.get_nowait()
+                except:
+                    stack_trace = 'Stack trace not available'
                 self.logger.error("Read process alive: %s - Replay process alive: %s" % (read_alive, replay_alive, ))
                 self.logger.error("Stack trace: %s" % (stack_trace, ))
                 if read_alive:

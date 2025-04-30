@@ -27,6 +27,8 @@ class mysql_source(object):
         self.schema_only = {}
         self.gtid_mode = False
         self.gtid_enable = False
+        self.copy_table_data = True
+
 
 
     def __del__(self):
@@ -41,12 +43,20 @@ class mysql_source(object):
             The method check if the mysql configuration is compatible with the replica requirements.
             If all the configuration requirements are met then the return value is True.
             Otherwise is false.
-            The parameters checked are
-            log_bin - ON if the binary log is enabled
+            The parameters checked are:
+            log_bin - ON if the binary log is enabled if we are on a vanilla mysql
             binlog_format - must be ROW , otherwise the replica won't get the data
             binlog_row_image - must be FULL, otherwise the row image will be incomplete
 
+            The method checks the function AURORA_VERSION() and if the query doesn't error then skips the log_bin parameter check.
         """
+        sql_aurora = """select AURORA_VERSION() ver;"""
+        try:
+            self.cursor_buffered.execute(sql_aurora)
+            skip_log_bin_check = True
+        except:
+            skip_log_bin_check = False
+
         if self.gtid_enable:
             sql_log_bin = """SHOW GLOBAL VARIABLES LIKE 'gtid_mode';"""
             self.cursor_buffered.execute(sql_log_bin)
@@ -90,7 +100,7 @@ class mysql_source(object):
         else:
             binlog_row_image = 'FULL'
 
-        if log_bin.upper() == 'ON' and binlog_format.upper() == 'ROW' and binlog_row_image.upper() == 'FULL':
+        if (log_bin.upper() == 'ON' or skip_log_bin_check) and binlog_format.upper() == 'ROW' and binlog_row_image.upper() == 'FULL':
             self.replica_possible = True
         else:
             self.replica_possible = False
@@ -111,6 +121,8 @@ class mysql_source(object):
         db_conn["port"] = int(db_conn["port"])
         db_conn["connect_timeout"] = int(db_conn["connect_timeout"])
 
+
+
         self.conn_buffered=pymysql.connect(
             cursorclass=pymysql.cursors.DictCursor,
             **db_conn
@@ -118,6 +130,9 @@ class mysql_source(object):
         self.charset = db_conn["charset"]
         self.cursor_buffered = self.conn_buffered.cursor()
         self.cursor_buffered_fallback = self.conn_buffered.cursor()
+        self.cursor_buffered.execute('SET SESSION   net_read_timeout = %s;',(self.net_read_timeout,))
+        self.cursor_buffered_fallback.execute('SET SESSION   net_read_timeout = %s;', (self.net_read_timeout,))
+
 
     def disconnect_db_buffered(self):
         """
@@ -144,7 +159,7 @@ class mysql_source(object):
         )
         self.charset = db_conn["charset"]
         self.cursor_unbuffered = self.conn_unbuffered.cursor()
-
+        self.cursor_unbuffered.execute('SET SESSION   net_read_timeout = %s;', (self.net_read_timeout,))
 
     def disconnect_db_unbuffered(self):
         """
@@ -355,25 +370,51 @@ class mysql_source(object):
         self.logger.info("retrieving foreign keys metadata for schemas %s" % schema_replica)
         sql_fkeys = """
             SELECT
-                table_name as table_name,
-                table_schema as table_schema,
-                constraint_name as constraint_name,
-                referenced_table_name as referenced_table_name,
-                referenced_table_schema as referenced_table_schema,
-                GROUP_CONCAT(concat('"',column_name,'"') ORDER BY POSITION_IN_UNIQUE_CONSTRAINT) as fk_cols,
-                GROUP_CONCAT(concat('"',REFERENCED_COLUMN_NAME,'"') ORDER BY POSITION_IN_UNIQUE_CONSTRAINT) as ref_columns
+                kc.table_name as table_name,
+                kc.table_schema as table_schema,
+                CASE WHEN (
+                                SELECT
+                                    count(1)
+                                FROM
+                                    information_schema.referential_constraints r
+                                WHERE
+                                        rc.constraint_name=r.constraint_name
+                                    AND  rc.constraint_schema=r.constraint_schema
+                            )>1
+                THEN
+                    concat(substring(kc.constraint_name,1,59),'_',SUBSTRING(md5(uuid()),1,4))
+                ELSE
+                    kc.constraint_name
+                END as constraint_name,
+                kc.referenced_table_name as referenced_table_name,
+                kc.referenced_table_schema as referenced_table_schema,
+                group_concat(DISTINCT concat('"',kc.column_name,'"') ORDER BY POSITION_IN_UNIQUE_CONSTRAINT) as fk_cols,
+                group_concat(DISTINCT concat('"',kc.referenced_column_name,'"') ORDER BY POSITION_IN_UNIQUE_CONSTRAINT) as ref_columns,
+                concat('ON DELETE ',rc.delete_rule) AS on_delete,
+                concat('ON UPDATE ',rc.update_rule) AS on_update
             FROM
-                information_schema.key_column_usage
+                information_schema.key_column_usage kc
+                INNER JOIN information_schema.referential_constraints rc
+                ON
+                        rc.table_name=kc.table_name
+                    AND rc.constraint_schema=kc.table_schema
+                    AND rc.constraint_name=kc.constraint_name
             WHERE
-                    table_schema in (%s)
-                AND referenced_table_name IS NOT NULL
-                AND referenced_table_schema in (%s)
+                    kc.table_schema in (%s)
+                AND kc.referenced_table_name IS NOT NULL
+                AND kc.referenced_table_schema in (%s)
             GROUP BY
-                table_name,
-                constraint_name,
-                referenced_table_name
+                kc.table_name,
+                kc.constraint_name,
+                kc.referenced_table_name,
+                kc.table_schema,
+                kc.referenced_table_schema,
+                rc.delete_rule,
+                rc.update_rule,
+                rc.constraint_name,
+                rc.constraint_schema
             ORDER BY
-                table_name
+                kc.table_name
             ;
 
         """ % (schema_replica, schema_replica)
@@ -528,6 +569,8 @@ class mysql_source(object):
             :return: the master's log coordinates for the given table
             :rtype: dictionary
         """
+        if not self.conn_buffered.open:
+            self.connect_db_buffered()
         sql_master = "SHOW MASTER STATUS;"
         self.cursor_buffered.execute(sql_master)
         master_status = self.cursor_buffered.fetchall()
@@ -708,12 +751,29 @@ class mysql_source(object):
         self.connect_db_buffered()
         self.logger.debug("Creating indices on table %s.%s " % (schema, table))
         sql_index = """
+
             SELECT
-                index_name as index_name,
-                non_unique as non_unique,
-                GROUP_CONCAT(column_name ORDER BY seq_in_index) as index_columns
+            CASE WHEN index_name='PRIMARY'
+            THEN
+                index_name
+            WHEN (
+                    SELECT
+                        count(1)
+                    FROM
+                        information_schema.statistics s
+                    WHERE
+                             s.index_name=t.index_name
+                        AND  s.table_schema=t.table_schema
+                )>1
+            THEN
+                concat(substring(index_name,1,59),'_',SUBSTRING(md5(uuid()),1,4))
+            ELSE
+                index_name
+            END AS index_name,
+            non_unique as non_unique,
+            GROUP_CONCAT(column_name ORDER BY seq_in_index) as index_columns
             FROM
-                information_schema.statistics
+                information_schema.statistics t
             WHERE
                     table_schema=%s
                 AND 	table_name=%s
@@ -722,8 +782,10 @@ class mysql_source(object):
                 table_name,
                 non_unique,
                 index_name
+            HAVING SUM(sub_part IS NOT NULL) = 0
             ;
         """
+
         self.cursor_buffered.execute(sql_index, (schema, table))
         index_data = self.cursor_buffered.fetchall()
         table_pkey = self.pg_engine.create_indices(loading_schema, table, index_data)
@@ -753,12 +815,19 @@ class mysql_source(object):
                         self.pg_engine.collect_idx_cons(destination_schema,table)
                         self.logger.info("Removing constraints and indices from the destination table  %s.%s" %(destination_schema, table) )
                         self.pg_engine.cleanup_idx_cons(destination_schema,table)
+                        self.logger.info("Truncating the table  %s.%s" %(destination_schema, table) )
                         self.pg_engine.truncate_table(destination_schema,table)
+                        master_status = self.copy_data(schema, table)
                     else:
+                        if self.copy_table_data:
+                            master_status = self.copy_data(schema, table)
+                        else:
+                            master_status = self.get_master_coordinates()
+
                         table_pkey = self.__create_indices(schema, table)
-                    master_status = self.copy_data(schema, table)
                     self.pg_engine.store_table(destination_schema, table, table_pkey, master_status)
                     if self.keep_existing_schema:
+                        #input("Press Enter to continue...")
                         self.logger.info("Adding constraint and indices to the destination table  %s.%s" %(destination_schema, table) )
                         self.pg_engine.create_idx_cons(destination_schema,table)
                 except:
@@ -846,6 +915,8 @@ class mysql_source(object):
         self.copy_mode = self.source_config["copy_mode"]
         self.pg_engine.lock_timeout = self.source_config["lock_timeout"]
         self.pg_engine.grant_select_to = self.source_config["grant_select_to"]
+
+
         if "keep_existing_schema" in self.sources[self.source]:
             self.keep_existing_schema = self.sources[self.source]["keep_existing_schema"]
         else:
@@ -1294,6 +1365,9 @@ class mysql_source(object):
 
                     sql_tokeniser.reset_lists()
                 if close_batch:
+                    if len(group_insert) > 0:
+                        self.logger.debug("writing the remaining %s row events when the statement event occurs" % (len(group_insert),))
+                        self.pg_engine.write_batch(group_insert)
                     my_stream.close()
                     return [master_data, close_batch]
             else:

@@ -1,5 +1,45 @@
 changelog
 *************************
+
+2.0.21 - 21 January 2025
+..........................................................
+* PR #163 provided by @bukem providing an optimization of the procedure for applying changes to Postgresql
+* Issue #170 add check for existing replica schema and display an hint instead of an exception
+* Fix incorrect placement of the new parameter net_read_timeout. Now it's set as an instance variable from global_lib.py
+
+2.0.20 - 01 January 2025
+..........................................................
+* Merge the SQL library improvements built by @nikochiko  for the `Google Summer of Code 2023 <https://summerofcode.withgoogle.com/archive/2023/projects/VnzdAl4z>`_
+* Fix setup.py for newer python versions as per patch provided by @darix in Issue #172
+* Merge PR #169 provided by @Jamal-B Fix read and replay daemons death detection
+* Merge PR #171 provided by @JasonLiu1567 fix issue #111
+* Merge PR #173 provided by @acarapetis Ignore MySQL indices with prefix key parts
+* DEPRECATION of rollbar support
+
+2.0.19 - 25 March 2023
+..........................................................
+* Merge pull request #144, mysql-replication support for PyMySQL>0.10.0 was introduced in v0.22
+* add support for fillfactor when running init_replica
+* improve logging on discarded rows
+* add distinct on group concat when collecting foreign keys
+* use mysql-replication>=0.31, fix for crash when replicating from MariaDB
+
+2.0.18 - 31 March 2022
+..........................................................
+* Support the ON DELETE and ON UPDATE clause when creating the foreign keys in PostgreSQL
+* change logic for index and foreign key names by managing only duplicates within same schema
+* use mysql-replication<0.27 as new versions crash when receiving queries
+* add copy_schema method for copying only the schema without data (EXPERIMENTAL)
+* change type for identifiers in replica schema to varchar(64)
+
+2.0.17 - 30 January 2022
+..........................................................
+* Remove argparse from the requirements
+* Add the collect for unique constraints when keep_existing_schema is **Yes**
+* Fix wrong order in copy data/create indices when keep_existing_schema is **No**
+* Remove check for log_bin we are replicating from Aurora MySQL
+* Manage different the different behaviour in pyyaml to allow pg_chameleon to be installed as rpm in centos 7
+
 2.0.16 - 23 September 2020
 ..........................................................
 * Fix for issue #126 init_replica failure with tables on transactional engine and invalid data

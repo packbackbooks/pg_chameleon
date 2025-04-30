@@ -36,6 +36,7 @@ Command line reference
     ``add_source``, Adds a new source to the replica catalogue, ``--config`` ``--source``
     ``drop_source``, Remove an existing source from the replica catalogue, ``--config`` ``--source``
     ``init_replica``, Initialise the replica for an existing source , ``--config`` ``--source``
+    ``copy_schema``, Copy only the schema from mysql to PostgreSQL., ``--config`` ``--source``
     ``update_schema_mappings``,Update the schema mappings stored in the replica catalogue using the data from the configuration file. , ``--config`` ``--source``
     ``refresh_schema``, Synchronise all the tables for a given schema within an already initialised source. , ``--config`` ``--source`` ``--schema``
     ``sync_tables``, Synchronise one or more tables within an already initialised source.  The switch ``--tables`` accepts the special name ``disabled`` to resync all the tables with replica disabled., ``--config`` ``--source`` ``--tables``
@@ -90,13 +91,17 @@ In MySQL create a user for the replica.
 
 Add the configuration for the replica to my.cnf. It requires a MySQL restart.
 
-.. code-block:: none
+
+
+.. code-block:: ini
 
     binlog_format= ROW
     binlog_row_image=FULL
     log-bin = mysql-bin
     server-id = 1
     expire_logs_days = 10
+    # MARIADB 10.5.0+ OR MYSQL 8.0.14+ versions
+    binlog_row_metadata = FULL
 
 
 

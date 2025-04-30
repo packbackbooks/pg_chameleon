@@ -74,7 +74,7 @@ Database connection
 
 .. literalinclude:: ../pg_chameleon/configuration/config-example.yml
    :language: yaml
-   :lines: 30-67
+   :lines: 30-68
    :emphasize-lines: 3-9
    :linenos:
 
@@ -86,7 +86,7 @@ Schema mappings
 
 .. literalinclude:: ../pg_chameleon/configuration/config-example.yml
    :language: yaml
-   :lines: 30-67
+   :lines: 30-68
    :emphasize-lines: 10-11
    :linenos:
 
@@ -98,7 +98,7 @@ Limit and skip tables
 
 .. literalinclude:: ../pg_chameleon/configuration/config-example.yml
    :language: yaml
-   :lines: 30-67
+   :lines: 30-68
    :emphasize-lines: 12-15
    :linenos:
 
@@ -112,7 +112,7 @@ Grant select to option
 
 .. literalinclude:: ../pg_chameleon/configuration/config-example.yml
    :language: yaml
-   :lines: 30-67
+   :lines: 30-68
    :emphasize-lines: 16-17
    :linenos:
 
@@ -128,7 +128,7 @@ Source configuration parameters
 
 .. literalinclude:: ../pg_chameleon/configuration/config-example.yml
    :language: yaml
-   :lines: 30-67
+   :lines: 30-68
    :emphasize-lines: 18-31
    :linenos:
 
@@ -152,7 +152,7 @@ Skip events configuration
 
 .. literalinclude:: ../pg_chameleon/configuration/config-example.yml
    :language: yaml
-   :lines: 30-67
+   :lines: 30-68
    :emphasize-lines: 32-37
    :linenos:
 
@@ -165,7 +165,7 @@ Keep existing schema
 
 .. literalinclude:: ../pg_chameleon/configuration/config-example.yml
    :language: yaml
-   :lines: 30-67
+   :lines: 30-68
    :emphasize-lines: 38-38
    :linenos:
 
@@ -178,10 +178,24 @@ A REINDEX TABLE is executed in order to have the indices in good shape after the
 
 When ``keep_existing_schema`` is set to Yes the parameter ``grant_select_to`` have no effect.
 
+net_read_timeout
+====================================
+
+.. literalinclude:: ../pg_chameleon/configuration/config-example.yml
+   :language: yaml
+   :lines: 30-68
+   :emphasize-lines: 39-39
+   :linenos:
+
+Configures for the session the net_read_timeout.
+Useful if the table copy during init replica fails on slow networks.
+
+It defaults to 600 seconds.
+
 PostgreSQL source type (EXPERIMENTAL)
 ================================================================
 
-pg_chameleon 2.0 have an experimental support for the postgresql source type.
+pg_chameleon 2.0 has an experimental support for the postgresql source type.
 When set to ``pgsql`` the system expects a postgresql source database rather a mysql.
 The following limitations apply.
 
@@ -196,6 +210,18 @@ The following limitations apply.
 
 .. literalinclude:: ../pg_chameleon/configuration/config-example.yml
    :language: yaml
-   :lines: 69-95
+   :lines: 69-96
    :emphasize-lines: 7,16,25,27
+   :linenos:
+
+Fillfactor
+================================================================
+The dictionary fillfactor is used to set the fillfactor for tables that are expected to work with large updates.
+The key name defines the fillfactor level (The allowed values range is 10 to 100).
+If key name is set to "*" then the fillfactor applies to all tables in the replicated schema.
+If the table appears multiple times, then only the last matched value will be applied
+
+.. literalinclude:: ../pg_chameleon/configuration/config-example.yml
+   :language: yaml
+   :lines: 101-108
    :linenos:

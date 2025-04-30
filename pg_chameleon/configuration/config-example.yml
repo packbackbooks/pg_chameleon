@@ -65,6 +65,7 @@ sources:
         - delphis_mediterranea  # skips deletes on schema delphis_mediterranea
       update:
     keep_existing_schema: No
+    net_read_timeout: 600
 
   pgsql:
     db_conn:
@@ -93,3 +94,15 @@ sources:
       copy_mode: 'file'
       out_dir: /tmp
       type: pgsql
+
+# the dictionary fillfactor is used to set the fillfactor for tables that are expected to work with large updates
+# The key name defines the fillfactor level (The allowed values range is 10 to 100)
+# If key name is set to "*" then the fillfactor applies to all tables in the replicated schema
+# If the table appears in multiple fillfactors then only the last matched value will be applied
+fillfactor:
+  "30":
+    tables:
+      - "foo.bar"
+  "40":
+    tables:
+      - "foo.foobar"
